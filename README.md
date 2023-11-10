@@ -1,13 +1,17 @@
-# Sample Hardhat Project
+# Memento Mori contracts
 
-This project demonstrates a basic Hardhat use case. It comes with a sample contract, a test for that contract, and a script that deploys that contract.
+Contract repo for the Memento Mori smart will dapp.
 
-Try running some of the following tasks:
-
+## Install dependencies
 ```shell
-npx hardhat help
-npx hardhat test
-REPORT_GAS=true npx hardhat test
-npx hardhat node
-npx hardhat run scripts/deploy.ts
+
+npm i
+
+```
+
+## Run the tests
+```shell
+
+npx hardhat test --network hardhat
+
 ```
