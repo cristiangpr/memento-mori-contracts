@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^ 0.8 .20;
+pragma solidity ^0.8.20;
 
 import{IERC20} from
-    "https://github.com/OpenZeppelin/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
+    "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import{IERC721} from
-    "https://github.com/OpenZeppelin/openzeppelin-contracts/contracts/token/ERC721/IERC721.sol";
+    "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import{IERC1155} from
-    "https://github.com/OpenZeppelin/openzeppelin-contracts/contracts/token/ERC1155/IERC1155.sol";
+    "@openzeppelin/contracts/token/ERC1155/IERC1155.sol";
 import{Ownable} from
-    "https://github.com/OpenZeppelin/openzeppelin-contracts/blob/master/contracts/access/Ownable.sol";
+    "@openzeppelin/contracts/access/Ownable.sol";
 
 import "@gnosis.pm/safe-contracts/contracts/common/Enum.sol";
 
@@ -34,7 +34,7 @@ interface GnosisSafe {
  */
 
 contract MementoMori is
-Ownable(msg.sender) {
+Ownable() {
   uint256 private constant TRANSFER_GAS = 21000;
   uint256 public fee;
 
@@ -104,14 +104,14 @@ Ownable(msg.sender) {
                       ERC1155[] calldata _1155s, address[] calldata _executors
 
                       ) external payable {
-    require(msg.value >= fee);
-    require(_native.beneficiaries.length == _native.percentages.length, "01");
+    require(msg.value >= fee, 'value must be greater than fee');
+    require(_native.beneficiaries.length == _native.percentages.length, "Invalid native");
     uint8 totalNativeShares = 0;
     uint256 nativePercentagesLength = _native.percentages.length;
     for (uint256 i = 0; i < nativePercentagesLength; i++) {
       totalNativeShares += _native.percentages[i];
     }
-    require(totalNativeShares == 100, "invalid native");
+    require(totalNativeShares == 100, "Invalid native");
 
     
     uint256 tokensLength = _tokens.length;
@@ -119,12 +119,12 @@ Ownable(msg.sender) {
       for (uint256 i = 0; i < tokensLength; i++) {
         require(
             _tokens[i].beneficiaries.length == _tokens[i].percentages.length,
-            "03");
+            "Invalid tokens");
         uint8 totalShares = 0;
         for (uint256 j = 0; j < _tokens[i].percentages.length; j++) {
           totalShares += _tokens[i].percentages[j];
         }
-        require(totalShares == 100, "invalid tokens");
+        require(totalShares == 100, "Invalid tokens");
       }
       }
 
@@ -133,12 +133,12 @@ Ownable(msg.sender) {
     if (erc1155sLength > 0) {
       for (uint256 i = 0; i < erc1155sLength; i++) {
         require(_1155s[i].beneficiaries.length == _1155s[i].percentages.length,
-                "03");
+                "Invalid erc1155s");
         uint8 totalShares = 0;
         for (uint256 j = 0; j < _1155s[i].percentages.length; j++) {
           totalShares += _1155s[i].percentages[j];
         }
-        require(totalShares == 100, "invalid er1155s");
+        require(totalShares == 100, "Invalid er1155s");
       }
     }
 
