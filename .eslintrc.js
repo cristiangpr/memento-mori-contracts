@@ -9,7 +9,7 @@ module.exports = {
     "parserOptions": {
         "ecmaVersion": "latest",
         "sourceType": "module",
-        "project": ["/home/chivoblack/projects/diesmart/tsconfig.json"]
+        "project": ["/home/chivoblack/projects/memento-mori-contracts/tsconfig.json"]
     },
     "rules": {
     }

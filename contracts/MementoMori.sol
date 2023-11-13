@@ -113,18 +113,27 @@ Ownable() {
     }
     require(totalNativeShares == 100, "Invalid native");
 
-    
-    uint256 tokensLength = _tokens.length;
+  uint256 tokensLength = _tokens.length;
     if (tokensLength > 0) { 
       for (uint256 i = 0; i < tokensLength; i++) {
         require(
-            _tokens[i].beneficiaries.length == _tokens[i].percentages.length,
+            _tokens[i].beneficiaries.length == _tokens[i].beneficiaries.length,
             "Invalid tokens");
-        uint8 totalShares = 0;
+      uint8 totalShares = 0;
         for (uint256 j = 0; j < _tokens[i].percentages.length; j++) {
           totalShares += _tokens[i].percentages[j];
         }
         require(totalShares == 100, "Invalid tokens");
+    
+      }
+      }
+    uint256 nftsLength = _nfts.length;
+    if (nftsLength > 0) {
+      for (uint256 i = 0; i < nftsLength; i++) {
+        require(
+            _nfts[i].beneficiaries.length == _nfts[i].tokenIds.length,
+            "Invalid nfts");
+    
       }
       }
 
@@ -153,7 +162,7 @@ Ownable() {
       newWill.tokens.push(_tokens[i]);
     }
     }
-    uint nftsLength = _nfts.length; 
+    
     for (uint i = 0; i < nftsLength; i++) {
      if (_nfts[i].contractAddress != address(0)) {
       newWill.nfts.push(_nfts[i]);
@@ -176,7 +185,7 @@ Ownable() {
   }
 
   /**
- * @notice Calculates the amount of tokens a beneficiary will receive
+ * @notice Calculates the amount of tokens a beneficiary will receive given a percentage
 
  * @param balance owner token balance
  * @param percentage percentage of total tokens beneficiary will recieve
@@ -301,6 +310,14 @@ Ownable() {
     emit WillExecuted(owner);
   }
 
+    /**
+ * @notice restricts functions to will executors, tipically will beneficiaries and owner
+
+ * @param owner address of will owner
+
+
+ */
+
   modifier onlyExecutors(address owner) {
     Will memory will = getWill(owner);
     bool isExecutor = false;
@@ -315,29 +332,55 @@ Ownable() {
     _;
   }
 
+     /**
+ * @notice requests will execution. Once this function is called, execution will be possible after the cooldown period unless the owner calls cancelExecution
+
+ * @param owner address of will owner
+
+
+ */
+
   function requestExecution(address owner) external onlyExecutors(owner) {
     Will storage will = willMap[owner];
     will.isActive = true;
     will.requestTime = block.timestamp;
     emit ExecutionRequested(owner);
   }
+       /**
+ * @notice Cancels will execution. Execution can be requested by calling requestExecution again.
+
+ */
   function cancelExecution() external {
     Will storage will = willMap[msg.sender];
     will.isActive = false;
     will.requestTime = 0;
     emit ExecutionCancelled(msg.sender);
   }
+        /**
+ * @notice Sets the fee in network native token collected by the contract for will creation.
+ * @param _fee amount in network native token collected by the contract for will creation.
+
+ */
 
   function setFee(uint256 _fee) external onlyOwner { fee = _fee; }
   function deleteWill() external {
     delete willMap[msg.sender];
     emit WillDeleted(msg.sender);
   }
+          /**
+ * @notice Returns a WIll struct given an address
+ * @param _address Will owner's address.
 
+ */
   function getWill(address _address) public view returns(Will memory) {
     return willMap[_address];
   }
+       /**
+ * @notice Withdraws the contract's native token balance.
+ * @param recipient address to withdraw to.
+ * @param amount native token withdrawal amount
 
+ */
   function withdraw(address payable recipient, uint256 amount)
       external payable onlyOwner {
     recipient.transfer(amount);
