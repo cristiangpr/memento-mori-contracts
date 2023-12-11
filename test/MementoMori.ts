@@ -100,14 +100,15 @@ describe('MementoMori', function () {
         isActive: false,
         requestTime: 0,
         cooldown: 0,
-        native,
+        native: [native],
         tokens: [token1, token2],
         nfts: [NFT1, NFT2],
         erc1155s: [erc1155NFT, erc1155Token],
         executors: [benef1Address, owner.address],
         chainSelector,
         safe: owner.address,
-        xChainAddress: mementoMori.address
+        xChainAddress: mementoMori.address,
+        baseAddress: owner.address
 
       }
 
@@ -183,7 +184,8 @@ describe('MementoMori', function () {
             multiSendCallOnlyAddress: '0x40A2aCCbd92BCA938b02010E17A5b8929b49130D',
             fallbackHandlerAddress: '0xf48f2B2d2a534e402487b3ee7C18c33Aec0Fe5e4',
             signMessageLibAddress: '0xA65387F16B013cf2Af4605Ad8aA5ec25a2cbA3a2',
-            createCallAddress: '0x7cbB62EaA69F79e6873cD1ecB2392971036cFAa4'
+            createCallAddress: '0x7cbB62EaA69F79e6873cD1ecB2392971036cFAa4',
+            simulateTxAccessorAddress: '0x3d4BA2E0884aa488718476ca2FB8Efc291A46199'
 
           }
         }
@@ -262,14 +264,15 @@ describe('MementoMori', function () {
           isActive: true,
           requestTime: await time.latest(),
           cooldown: 1,
-          native: nativeToken,
+          native: [nativeToken],
           tokens: [token],
           nfts: [NFT],
           erc1155s: [erc1155Nft, erc1155Ft],
           executors: [benef1Address, benef2Address, safeAddress],
           chainSelector,
           safe: safeAddress,
-          xChainAddress: mementoMori.address
+          xChainAddress: mementoMori.address,
+          baseAddress: safeAddress
 
         }
         const IMementoMori = new ethers.utils.Interface(mementoMoriAbi.abi)

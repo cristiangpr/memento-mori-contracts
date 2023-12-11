@@ -49,7 +49,7 @@ export interface Will {
   isActive: boolean
   requestTime: number
   cooldown: number
-  native: NativeToken
+  native: NativeToken[]
   tokens: Token[]
   nfts: NFT[]
   erc1155s: Erc1155[]
@@ -57,6 +57,7 @@ export interface Will {
   chainSelector: any
   safe: string
   xChainAddress: string
+  baseAddress: string
 
 }
 
