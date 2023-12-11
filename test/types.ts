@@ -45,6 +45,20 @@ export interface UserInfo {
   birthDate?: string
   address?: string
 }
+export interface Will {
+  isActive: boolean
+  requestTime: number
+  cooldown: number
+  native: NativeToken
+  tokens: Token[]
+  nfts: NFT[]
+  erc1155s: Erc1155[]
+  executors: string[]
+  chainSelector: any
+  safe: string
+  xChainAddress: string
+
+}
 
 export enum Form {
   Cooldown = 'cooldown',

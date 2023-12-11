@@ -6,7 +6,8 @@ import { type ContractNetworksConfig, EthersAdapter, SafeFactory } from '@safe-g
 import { type SafeTransaction, type SafeTransactionDataPartial } from '@safe-global/safe-core-sdk-types'
 import { type SafeAccountConfig } from '@safe-global/safe-core-sdk'
 import mementoMoriAbi from '../artifacts/contracts/MementoMori.sol/MementoMori.json'
-import { type Erc1155, type NativeToken, type NFT, type Token } from './types'
+import { type Will, type Erc1155, type NativeToken, type NFT, type Token } from './types'
+import { time } from '@nomicfoundation/hardhat-network-helpers'
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 require('dotenv').config()
 
@@ -74,6 +75,11 @@ const invalidNative: NativeToken = {
   percentages: [50]
 }
 
+const router = '0xa8c0c11bf64af62cdca6f93d3769b88bdd7cb93d'
+const link = '0xd886e2286fd1073df82462ea1822119600af80b6'
+// eslint-disable-next-line @typescript-eslint/no-loss-of-precision
+const chainSelector = '5790810961207155433'
+
 describe('MementoMori', function () {
   // We define a fixture to reuse the same setup in every test.
   // We use loadFixture to run this setup once, snapshot that state,
@@ -89,14 +95,28 @@ describe('MementoMori', function () {
       const benef1Address: string = await beneficiary1.getAddress()
       const benef2Address: string = await beneficiary2.getAddress()
       const MementoMori = await ethers.getContractFactory('MementoMori')
-      const mementoMori = await MementoMori.deploy(fee)
+      const mementoMori = await MementoMori.deploy(fee, router, link, chainSelector)
+      const will: Will = {
+        isActive: false,
+        requestTime: 0,
+        cooldown: 0,
+        native,
+        tokens: [token1, token2],
+        nfts: [NFT1, NFT2],
+        erc1155s: [erc1155NFT, erc1155Token],
+        executors: [benef1Address, owner.address],
+        chainSelector,
+        safe: owner.address,
+        xChainAddress: mementoMori.address
 
-      return { mementoMori, fee, ownerAddress, owner, beneficiary1, beneficiary2, benef1Address, benef2Address }
+      }
+
+      return { mementoMori, fee, ownerAddress, owner, beneficiary1, beneficiary2, benef1Address, benef2Address, will }
     }
   )
 
   describe('Deployment', function () {
-    it('Should set the right feee and owner', async function () {
+    it('Should set the right constructor variables', async function () {
       const { mementoMori, fee, ownerAddress } = await setupTest()
 
       expect(await mementoMori.fee()).to.equal(fee)
@@ -104,36 +124,18 @@ describe('MementoMori', function () {
     })
   })
 
-  describe('Create will', function () {
+  describe('saveWillHash', function () {
     describe('Validations', function () {
       it('Should revert if the value is less than the fee', async function () {
-        const { mementoMori, benef1Address } = await setupTest()
-        await expect(mementoMori.createWill(
-          1, native, [token1, token2], [NFT1, NFT2], [erc1155Token, erc1155NFT], [benef1Address], { value: 0 })).to.be.revertedWith('value must be greater than fee')
+        const { mementoMori, will } = await setupTest()
+
+        await expect(mementoMori.saveWillHash([will], { value: 0 })).to.be.revertedWith('value must be greater than fee')
       })
 
-      it('Should revert with the right error if called with invalid data', async function () {
-        const { mementoMori, benef1Address } = await setupTest()
+      it('Should save the correct hash and emit WillCreated event upon success', async function () {
+        const { mementoMori, will } = await setupTest()
 
-        await expect(mementoMori.createWill(
-          1, native, [token1, invalidToken], [NFT1, NFT2], [erc1155Token, erc1155NFT], [benef1Address], { value: 1000000 })).to.be.revertedWith('Invalid tokens')
-
-        await expect(mementoMori.createWill(
-          1, native, [token1, token2], [NFT1, invalidNFT], [erc1155Token, erc1155NFT], [benef1Address], { value: 1000000 })).to.be.revertedWith('Invalid nfts')
-
-        await expect(mementoMori.createWill(
-          1, native, [token1, token2], [NFT1, NFT2], [erc1155Token, invalidErc1155], [benef1Address], { value: 1000000 })).to.be.revertedWith('Invalid erc1155s')
-
-        await expect(mementoMori.createWill(
-          1, invalidNative, [token1, token2], [NFT1, NFT2], [erc1155Token, erc1155NFT], [benef1Address], { value: 1000000 })).to.be.revertedWith('Invalid native')
-      })
-
-      it('Should emit WillCreated event upon success', async function () {
-        const { mementoMori, benef1Address } = await setupTest()
-        console.log(token1)
-
-        await expect(mementoMori.createWill(
-          1, native, [token1, token2], [NFT1, NFT2], [erc1155Token, erc1155NFT], [benef1Address], { value: 1000000 })).to.emit(mementoMori, 'WillCreated')
+        await expect(mementoMori.saveWillHash([will], { value: 1000000 })).to.emit(mementoMori, 'WillCreated')
       })
     })
   })
@@ -158,7 +160,7 @@ describe('MementoMori', function () {
 
   describe('execute', function () {
     describe('transfers', function () {
-      it('should disgtribute native tokens in correct percentages', async function () {
+      it('should disgtribute tokens in correct percentages', async function () {
         const { mementoMori, ownerAddress, benef1Address, owner, benef2Address, beneficiary1, beneficiary2 } = await setupTest()
         const MyToken = await ethers.getContractFactory('MyToken')
         const myToken = await MyToken.deploy()
@@ -256,8 +258,22 @@ describe('MementoMori', function () {
           percentages: [50, 50]
         }
         // Create a will for Safe
+        const will: Will = {
+          isActive: true,
+          requestTime: await time.latest(),
+          cooldown: 1,
+          native: nativeToken,
+          tokens: [token],
+          nfts: [NFT],
+          erc1155s: [erc1155Nft, erc1155Ft],
+          executors: [benef1Address, benef2Address, safeAddress],
+          chainSelector,
+          safe: safeAddress,
+          xChainAddress: mementoMori.address
+
+        }
         const IMementoMori = new ethers.utils.Interface(mementoMoriAbi.abi)
-        const createWillData: string = IMementoMori.encodeFunctionData('createWill', [1, nativeToken, [token], [NFT], [erc1155Nft, erc1155Ft], [safeAddress, benef1Address]])
+        const createWillData: string = IMementoMori.encodeFunctionData('saveWillHash', [[will]])
         const createWillTransaction: SafeTransactionDataPartial = {
           to: mementoMori.address,
           value: '10000000',
@@ -268,10 +284,11 @@ describe('MementoMori', function () {
         const safeCreateWillTransaction: SafeTransaction = await safe.createTransaction({ safeTransactionData: createWillTransaction })
         console.log('1')
         await safe.signTransaction(safeCreateWillTransaction)
-        console.log('2')
+        console.log('saveHash')
         const executeCreateWillTxResponse = await safe.executeTransaction(safeCreateWillTransaction)
-        console.log('3')
+
         await executeCreateWillTxResponse.transactionResponse?.wait()
+        console.log(await mementoMori.willHashes(safeAddress))
         // Enable Memento Mori module
         const IenableModule = new ethers.utils.Interface([
           'function enableModule(address module)'
@@ -286,32 +303,15 @@ describe('MementoMori', function () {
         }
 
         const safeTransaction: SafeTransaction = await safe.createTransaction({ safeTransactionData: safeEnableModuleTransactionData })
-        console.log('4')
+
         const executeTxResponse = await safe.executeTransaction(safeTransaction)
-        console.log('5')
+        console.log('enable')
         await executeTxResponse.transactionResponse?.wait()
-        console.log('6')
-        // Request will execution
-        const requestData: string = IMementoMori.encodeFunctionData('requestExecution', [safeAddress])
-        const safeRequestTransactionData: SafeTransactionDataPartial = {
-          to: ethers.utils.getAddress(mementoMori.address),
-          value: '0',
-          data: requestData
-        }
-
-        const safeReqTransaction: SafeTransaction = await safe.createTransaction({ safeTransactionData: safeRequestTransactionData })
-        console.log('4')
-        const safeReqTxResponse = await safe.executeTransaction(safeReqTransaction)
-        console.log('5')
-        await safeReqTxResponse.transactionResponse?.wait()
-        console.log('6')
-
-        const sleep = async (ms: number | undefined): Promise<void> => { await new Promise(resolve => setTimeout(resolve, ms)) }
-        await sleep(1000)
+        await time.increase(100)
 
         // Execute the will
 
-        const executeData: string = IMementoMori.encodeFunctionData('execute', [safeAddress, 50000000000])
+        const executeData: string = IMementoMori.encodeFunctionData('execute', [[will]])
         const safeExecuteTransactionData: SafeTransactionDataPartial = {
           to: ethers.utils.getAddress(mementoMori.address),
           value: '0',
@@ -319,11 +319,11 @@ describe('MementoMori', function () {
         }
 
         const safeExecTransaction: SafeTransaction = await safe.createTransaction({ safeTransactionData: safeExecuteTransactionData })
-        console.log('4')
+        console.log('execute')
         const safeExecuteTxResponse = await safe.executeTransaction(safeExecTransaction)
-        console.log('5')
+
         await safeExecuteTxResponse.transactionResponse?.wait()
-        console.log('6')
+
         // Check expected balances
         expect(await safe.isModuleEnabled(mementoMori.address)).to.equal(true)
         expect((await beneficiary1.getBalance())).to.equal(await beneficiary2.getBalance())
