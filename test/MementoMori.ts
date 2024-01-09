@@ -21,11 +21,6 @@ const token2: Token = {
   beneficiaries: ['0x6De9840D3f72e1F0bDeA686b6A06284595C61614', '0x82dEa1ca00b61BF2fcA626f8ba66d479aE55C923'],
   percentages: [50, 50]
 }
-const invalidToken: Token = {
-  contractAddress: '0x326C977E6efc84E512bB9C30f76E30c160eD06FB',
-  beneficiaries: ['0x6De9840D3f72e1F0bDeA686b6A06284595C61614', '0x82dEa1ca00b61BF2fcA626f8ba66d479aE55C923'],
-  percentages: [50]
-}
 
 const NFT1: NFT = {
   contractAddress: '0x432C789F56B6BCaBCdc4b542b610a27A01Df9E88',
@@ -37,11 +32,6 @@ const NFT2: NFT = {
   contractAddress: '0xd392BE1391c88C9329B2f8f08050205482E9Ab9D',
   tokenIds: [0],
   beneficiaries: ['0x82dEa1ca00b61BF2fcA626f8ba66d479aE55C923']
-}
-const invalidNFT: NFT = {
-  contractAddress: '0xd392BE1391c88C9329B2f8f08050205482E9Ab9D',
-  tokenIds: [0],
-  beneficiaries: []
 }
 
 const erc1155NFT: Erc1155 = {
@@ -58,21 +48,10 @@ const erc1155Token: Erc1155 = {
   percentages: [50, 50]
 
 }
-const invalidErc1155: Erc1155 = {
-  contractAddress: '0xbeB9A26c85cd1A253940F1BB6Ab8fd7796720C11',
-  tokenId: 1,
-  beneficiaries: ['0x6De9840D3f72e1F0bDeA686b6A06284595C61614', '0x82dEa1ca00b61BF2fcA626f8ba66d479aE55C923'],
-  percentages: [50]
-
-}
 
 const native: NativeToken = {
   beneficiaries: ['0x6De9840D3f72e1F0bDeA686b6A06284595C61614', '0x82dEa1ca00b61BF2fcA626f8ba66d479aE55C923'],
   percentages: [50, 50]
-}
-const invalidNative: NativeToken = {
-  beneficiaries: ['0x6De9840D3f72e1F0bDeA686b6A06284595C61614', '0x82dEa1ca00b61BF2fcA626f8ba66d479aE55C923'],
-  percentages: [50]
 }
 
 const router = '0xa8c0c11bf64af62cdca6f93d3769b88bdd7cb93d'
