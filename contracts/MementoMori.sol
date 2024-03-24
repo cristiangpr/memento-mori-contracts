@@ -38,7 +38,7 @@ contract MementoMori is Ownable {
     uint256 public fee;
     IRouterClient s_router;
     LinkTokenInterface private s_linkToken;
-    uint64 chainSelector;
+    uint64 public chainSelector;
     mapping(address => bytes32) public willHashes;
     event WillExecuted(address indexed owner);
     event ExecutionRequested(address indexed owner);
