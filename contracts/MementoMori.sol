@@ -27,6 +27,14 @@ interface GnosisSafe {
         Enum.Operation operation
     ) external returns (bool success);
 }
+    /// ERRORS
+    error NotEnoughBalance(uint256 currentBalance, uint256 calculatedFees); // Used to make sure contract has enough LINK balance for cross chain transactions.
+    error NotExecutor();  // Is thrown if an address that is not a will beneficiary or executor tries to execute a will.
+    error ValueLessThanFee(uint256 fee, uint256 value);
+    error HashesDontMatch();
+    error ChainSelectorsDontMatch();
+    error StillInCooldown(uint256 current, uint256 cooldown);
+    error TransferFailed();
 
 /**
  * @title The MementoMori contract
@@ -36,7 +44,7 @@ interface GnosisSafe {
 
 contract MementoMori is Ownable {
     uint256 public fee;
-    IRouterClient s_router;
+    IRouterClient private s_router;
     LinkTokenInterface private s_linkToken;
     uint64 public chainSelector;
     mapping(address => bytes32) public willHashes;
@@ -47,7 +55,6 @@ contract MementoMori is Ownable {
     event ExecutionCancelled(address indexed owner);
     event WillDeleted(address indexed owner);
     // Event emitted when a message is sent to another chain.
-    // Event emitted when a message is sent to another chain.
     event MessageSent(
         bytes32 indexed messageId, // The unique ID of the CCIP message.
         uint64 indexed destinationChainSelector, // The chain selector of the destination chain.
@@ -57,7 +64,7 @@ contract MementoMori is Ownable {
         uint256 fees // The fees paid for sending the CCIP message.
     );
 
-    error NotEnoughBalance(uint256 currentBalance, uint256 calculatedFees); // Used to make sure contract has enough balance.
+   
 
     struct Will {
         bool isActive;
@@ -117,16 +124,35 @@ contract MementoMori is Ownable {
     }
 
     /**
- * @notice Saves a hash of the user's will struct used to verify validity of input for execute function
-
- * @param  wills Hash of user's will struct 
-
+   * @notice restricts functions to will executors, tipically will beneficiaries and owner
+   * @param will Will struct to check for executors
  */
+    modifier onlyExecutors(Will calldata will) {
+        bool isExecutor = false;
+        for (uint256 i = 0; i < will.executors.length; i++) {
+            if (msg.sender == will.executors[i]) {
+                isExecutor = true;
+                break;
+            }
+        }
+
+        if(isExecutor != true) {
+            revert NotExecutor();
+        }
+        _;
+    }
+
+    /**
+ * @notice Saves a hash of the user's will struct used to verify validity of input for execute function
+ * @param  wills Hash of user's will struct 
+*/
     function saveWillHash(
         Will[] calldata wills,
         uint operationType
     ) external payable {
-        require(msg.value >= fee, "value must be greater than fee");
+        if(msg.value >= fee) {
+            revert ValueLessThanFee(fee, msg.value);
+        }
         bytes32 willHash = keccak256(abi.encode(wills));
         willHashes[msg.sender] = willHash;
         if (operationType == 0) {
@@ -138,6 +164,11 @@ contract MementoMori is Ownable {
         }
     }
 
+    function deleteWill() external {
+        delete willHashes[msg.sender];
+        emit WillDeleted(msg.sender);
+    }
+
     function requestExecution(
         Will[] calldata wills
     ) external payable onlyExecutors(wills[0]) {
@@ -147,17 +178,148 @@ contract MementoMori is Ownable {
     }
 
     /**
- * @notice Calculates the amount of tokens a beneficiary will receive given a percentage
-
- * @param balance owner token balance
- * @param percentage percentage of total tokens beneficiary will recieve
+ * @notice Executes the will, distributing assets among beneficiaries
+ * @param wills array of will structs
  */
-    function calculateAmount(
-        uint256 balance,
-        uint256 percentage
-    ) public pure returns (uint) {
-        uint bp = percentage * 100;
-        return (balance * bp) / 10000;
+    function execute(Will[] calldata wills) external onlyExecutors(wills[0]) {
+        Will memory will = wills[0];
+        if(keccak256(abi.encode(wills)) == willHashes[will.safe]) {
+            revert HashesDontMatch();
+        }
+        if(will.chainSelector == chainSelector) {
+            revert ChainSelectorsDontMatch();
+        }
+
+        if(block.timestamp - will.requestTime >= will.cooldown) {
+            revert StillInCooldown(block.timestamp, will.requestTime + will.cooldown);
+        }
+        if (will.tokens.length > 0) {
+            for (uint256 i = 0; i < will.tokens.length; i++) {
+                uint256 balance = IERC20(will.tokens[i].contractAddress)
+                    .balanceOf(will.safe);
+                if (balance / will.tokens[i].beneficiaries.length > 0) {
+                    for (
+                        uint256 j = 0;
+                        j < will.tokens[i].beneficiaries.length;
+                        j++
+                    ) {
+                        uint256 amount = calculateAmount(
+                            balance,
+                            will.tokens[i].percentages[j]
+                        );
+
+                        if(!GnosisSafe(will.safe).execTransactionFromModule(
+                                will.tokens[i].contractAddress,
+                                0,
+                                abi.encodeWithSignature(
+                                    "transfer(address,uint256)",
+                                    will.tokens[i].beneficiaries[j],
+                                    amount
+                                ),
+                                Enum.Operation.Call
+                            )
+                        ) {
+                            revert TransferFailed();
+                        }
+                    }
+                }
+            }
+        }
+        if (will.nfts.length > 0) {
+            for (uint256 i = 0; i < will.nfts.length; i++) {
+                for (uint256 j = 0; j < will.nfts[i].tokenIds.length; j++) {
+                    if (
+                        IERC721(will.nfts[i].contractAddress).ownerOf(
+                            will.nfts[i].tokenIds[j]
+                        ) == will.safe
+                    ) {
+                        if(!GnosisSafe(will.safe).execTransactionFromModule(
+                                will.nfts[i].contractAddress,
+                                0,
+                                abi.encodeWithSignature(
+                                    "safeTransferFrom(address,address,uint256)",
+                                    will.safe,
+                                    will.nfts[i].beneficiaries[j],
+                                    will.nfts[j].tokenIds[j]
+                                ),
+                                Enum.Operation.Call
+                            )
+                        ) {
+                            revert TransferFailed();
+                        }
+                    }
+                }
+            }
+        }
+        if (will.erc1155s.length > 0) {
+            for (uint256 i = 0; i < will.erc1155s.length; i++) {
+                uint balance = IERC1155(will.erc1155s[i].contractAddress)
+                    .balanceOf(will.safe, will.erc1155s[i].tokenId);
+                if (balance / will.erc1155s[i].beneficiaries.length > 0) {
+                    for (
+                        uint256 j = 0;
+                        j < will.erc1155s[i].beneficiaries.length;
+                        j++
+                    ) {
+                        uint256 amount;
+                        if (balance > 1) {
+                            amount = calculateAmount(
+                                balance,
+                                will.erc1155s[i].percentages[j]
+                            );
+                        } else if (balance == 1) {
+                            amount = 1;
+                        }
+
+                        if(!GnosisSafe(will.safe).execTransactionFromModule(
+                                will.erc1155s[i].contractAddress,
+                                0,
+                                abi.encodeWithSignature(
+                                    "safeTransferFrom(address,address,uint256,uint256,"
+                                    "bytes)",
+                                    will.safe,
+                                    will.erc1155s[i].beneficiaries[j],
+                                    will.erc1155s[i].tokenId,
+                                    amount,
+                                    "0x"
+                                ),
+                                Enum.Operation.Call
+                            )
+
+                        ) {
+                            revert TransferFailed();
+                        }
+                    }
+                }
+            }
+        }
+        uint nativBalance = will.safe.balance;
+        for (uint256 i = 0; i < will.native[0].beneficiaries.length; i++) {
+            uint256 nativeAmount = calculateAmount(
+                nativBalance,
+                will.native[0].percentages[i]
+            );
+            if(!GnosisSafe(will.safe).execTransactionFromModule(
+                    will.native[0].beneficiaries[i],
+                    nativeAmount,
+                    "",
+                    Enum.Operation.Call
+                )
+            
+            ) {
+                revert TransferFailed();
+            }
+        }
+        if (wills.length > 1) {
+            for (uint i = 1; i < wills.length; i++) {
+                sendMessage(
+                    wills[i].chainSelector,
+                    wills[i].xChainAddress,
+                    wills[i]
+                );
+            }
+        }
+        emit WillExecuted(will.safe);
     }
 
     /// @notice Sends data to receiver on the destination chain.
@@ -213,181 +375,17 @@ contract MementoMori is Ownable {
         return messageId;
     }
 
-    function getBalance() public view returns (uint) {
-        return s_linkToken.balanceOf(address(this));
-    }
-
     /**
- * @notice Executes the will, distributing assets among beneficiaries
-
- * @param wills array of will structs
-
+ * @notice Calculates the amount of tokens a beneficiary will receive given a percentage
+ * @param balance owner token balance
+ * @param percentage percentage of total tokens beneficiary will recieve
  */
-
-    function execute(Will[] calldata wills) external onlyExecutors(wills[0]) {
-        Will memory will = wills[0];
-        require(
-            keccak256(abi.encode(wills)) == willHashes[will.safe],
-            "hashes don't match"
-        );
-        require(
-            will.chainSelector == chainSelector,
-            "chain selectors don't match"
-        );
-
-        require(
-            block.timestamp - will.requestTime >= will.cooldown,
-            "Execution still in cooldown"
-        );
-        if (will.tokens.length > 0) {
-            for (uint256 i = 0; i < will.tokens.length; i++) {
-                uint256 balance = IERC20(will.tokens[i].contractAddress)
-                    .balanceOf(will.safe);
-                if (balance / will.tokens[i].beneficiaries.length > 0) {
-                    for (
-                        uint256 j = 0;
-                        j < will.tokens[i].beneficiaries.length;
-                        j++
-                    ) {
-                        uint256 amount = calculateAmount(
-                            balance,
-                            will.tokens[i].percentages[j]
-                        );
-
-                        require(
-                            GnosisSafe(will.safe).execTransactionFromModule(
-                                will.tokens[i].contractAddress,
-                                0,
-                                abi.encodeWithSignature(
-                                    "transfer(address,uint256)",
-                                    will.tokens[i].beneficiaries[j],
-                                    amount
-                                ),
-                                Enum.Operation.Call
-                            ),
-                            "Token transfer failed"
-                        );
-                    }
-                }
-            }
-        }
-        if (will.nfts.length > 0) {
-            for (uint256 i = 0; i < will.nfts.length; i++) {
-                for (uint256 j = 0; j < will.nfts[i].tokenIds.length; j++) {
-                    if (
-                        IERC721(will.nfts[i].contractAddress).ownerOf(
-                            will.nfts[i].tokenIds[j]
-                        ) == will.safe
-                    ) {
-                        require(
-                            GnosisSafe(will.safe).execTransactionFromModule(
-                                will.nfts[i].contractAddress,
-                                0,
-                                abi.encodeWithSignature(
-                                    "safeTransferFrom(address,address,uint256)",
-                                    will.safe,
-                                    will.nfts[i].beneficiaries[j],
-                                    will.nfts[j].tokenIds[j]
-                                ),
-                                Enum.Operation.Call
-                            ),
-                            "NFT transfer failed"
-                        );
-                    }
-                }
-            }
-        }
-        if (will.erc1155s.length > 0) {
-            for (uint256 i = 0; i < will.erc1155s.length; i++) {
-                uint balance = IERC1155(will.erc1155s[i].contractAddress)
-                    .balanceOf(will.safe, will.erc1155s[i].tokenId);
-                if (balance / will.erc1155s[i].beneficiaries.length > 0) {
-                    for (
-                        uint256 j = 0;
-                        j < will.erc1155s[i].beneficiaries.length;
-                        j++
-                    ) {
-                        uint256 amount;
-                        if (balance > 1) {
-                            amount = calculateAmount(
-                                balance,
-                                will.erc1155s[i].percentages[j]
-                            );
-                        } else if (balance == 1) {
-                            amount = 1;
-                        }
-
-                        require(
-                            GnosisSafe(will.safe).execTransactionFromModule(
-                                will.erc1155s[i].contractAddress,
-                                0,
-                                abi.encodeWithSignature(
-                                    "safeTransferFrom(address,address,uint256,uint256,"
-                                    "bytes)",
-                                    will.safe,
-                                    will.erc1155s[i].beneficiaries[j],
-                                    will.erc1155s[i].tokenId,
-                                    amount,
-                                    "0x"
-                                ),
-                                Enum.Operation.Call
-                            ),
-                            "erc1155 transfer failed"
-                        );
-                    }
-                }
-            }
-        }
-        uint nativBalance = will.safe.balance;
-        for (uint256 i = 0; i < will.native[0].beneficiaries.length; i++) {
-            uint256 nativeAmount = calculateAmount(
-                nativBalance,
-                will.native[0].percentages[i]
-            );
-            require(
-                GnosisSafe(will.safe).execTransactionFromModule(
-                    will.native[0].beneficiaries[i],
-                    nativeAmount,
-                    "",
-                    Enum.Operation.Call
-                ),
-                "Native transfer failed"
-            );
-        }
-        if (wills.length > 1) {
-            for (uint i = 1; i < wills.length; i++) {
-                sendMessage(
-                    wills[i].chainSelector,
-                    wills[i].xChainAddress,
-                    wills[i]
-                );
-            }
-        }
-        emit WillExecuted(will.safe);
-    }
-
-    /**
- * @notice restricts functions to will executors, tipically will beneficiaries and owner
-
- * @param will Will struct to check for executors
-
-
- */
-    modifier onlyExecutors(Will calldata will) {
-        bool isExecutor = false;
-        for (uint256 i = 0; i < will.executors.length; i++) {
-            if (msg.sender == will.executors[i]) {
-                isExecutor = true;
-                break;
-            }
-        }
-
-        require(isExecutor == true, "You are not a will beneficiary");
-        _;
-    }
-
-    function deleteWill() external {
-        delete willHashes[msg.sender];
+    function calculateAmount(
+        uint256 balance,
+        uint256 percentage
+    ) internal pure returns (uint256) {
+        uint bp = percentage * 100;
+        return (balance * bp) / 10000;
     }
 
     function withdraw(
@@ -395,5 +393,9 @@ contract MementoMori is Ownable {
         uint256 amount
     ) external payable onlyOwner {
         recipient.transfer(amount);
+    }
+
+    function getBalance() public view returns (uint) {
+        return s_linkToken.balanceOf(address(this));
     }
 }
