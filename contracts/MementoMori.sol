@@ -27,14 +27,14 @@ interface GnosisSafe {
         Enum.Operation operation
     ) external returns (bool success);
 }
-    /// ERRORS
-    error NotEnoughBalance(uint256 currentBalance, uint256 calculatedFees); // Used to make sure contract has enough LINK balance for cross chain transactions.
-    error NotExecutor();  // Is thrown if an address that is not a will beneficiary or executor tries to execute a will.
-    error ValueLessThanFee(uint256 fee, uint256 value);
-    error HashesDontMatch();
-    error ChainSelectorsDontMatch();
-    error StillInCooldown(uint256 current, uint256 cooldown);
-    error TransferFailed();
+/// ERRORS
+error NotEnoughBalance(uint256 currentBalance, uint256 calculatedFees); // Used to make sure contract has enough LINK balance for cross chain transactions.
+error NotExecutor(); // Is thrown if an address that is not a will beneficiary or executor tries to execute a will.
+error ValueLessThanFee(uint256 fee, uint256 value);
+error HashesDontMatch();
+error ChainSelectorsDontMatch();
+error StillInCooldown(uint256 current, uint256 cooldown);
+error TransferFailed();
 
 /**
  * @title The MementoMori contract
@@ -63,8 +63,6 @@ contract MementoMori is Ownable {
         address feeToken, // the token address used to pay CCIP fees.
         uint256 fees // The fees paid for sending the CCIP message.
     );
-
-   
 
     struct Will {
         bool isActive;
@@ -124,9 +122,9 @@ contract MementoMori is Ownable {
     }
 
     /**
-   * @notice restricts functions to will executors, tipically will beneficiaries and owner
-   * @param will Will struct to check for executors
- */
+     * @notice restricts functions to will executors, tipically will beneficiaries and owner
+     * @param will Will struct to check for executors
+     */
     modifier onlyExecutors(Will calldata will) {
         bool isExecutor = false;
         for (uint256 i = 0; i < will.executors.length; i++) {
@@ -136,21 +134,21 @@ contract MementoMori is Ownable {
             }
         }
 
-        if(isExecutor != true) {
+        if (isExecutor != true) {
             revert NotExecutor();
         }
         _;
     }
 
     /**
- * @notice Saves a hash of the user's will struct used to verify validity of input for execute function
- * @param  wills Hash of user's will struct 
-*/
+     * @notice Saves a hash of the user's will struct used to verify validity of input for execute function
+     * @param  wills Hash of user's will struct
+     */
     function saveWillHash(
         Will[] calldata wills,
         uint operationType
     ) external payable {
-        if(msg.value >= fee) {
+        if (msg.value < fee) {
             revert ValueLessThanFee(fee, msg.value);
         }
         bytes32 willHash = keccak256(abi.encode(wills));
@@ -178,20 +176,23 @@ contract MementoMori is Ownable {
     }
 
     /**
- * @notice Executes the will, distributing assets among beneficiaries
- * @param wills array of will structs
- */
+     * @notice Executes the will, distributing assets among beneficiaries
+     * @param wills array of will structs
+     */
     function execute(Will[] calldata wills) external onlyExecutors(wills[0]) {
         Will memory will = wills[0];
-        if(keccak256(abi.encode(wills)) == willHashes[will.safe]) {
+        if (keccak256(abi.encode(wills)) == willHashes[will.safe]) {
             revert HashesDontMatch();
         }
-        if(will.chainSelector == chainSelector) {
+        if (will.chainSelector == chainSelector) {
             revert ChainSelectorsDontMatch();
         }
 
-        if(block.timestamp - will.requestTime >= will.cooldown) {
-            revert StillInCooldown(block.timestamp, will.requestTime + will.cooldown);
+        if (block.timestamp - will.requestTime >= will.cooldown) {
+            revert StillInCooldown(
+                block.timestamp,
+                will.requestTime + will.cooldown
+            );
         }
         if (will.tokens.length > 0) {
             for (uint256 i = 0; i < will.tokens.length; i++) {
@@ -208,7 +209,8 @@ contract MementoMori is Ownable {
                             will.tokens[i].percentages[j]
                         );
 
-                        if(!GnosisSafe(will.safe).execTransactionFromModule(
+                        if (
+                            !GnosisSafe(will.safe).execTransactionFromModule(
                                 will.tokens[i].contractAddress,
                                 0,
                                 abi.encodeWithSignature(
@@ -233,7 +235,8 @@ contract MementoMori is Ownable {
                             will.nfts[i].tokenIds[j]
                         ) == will.safe
                     ) {
-                        if(!GnosisSafe(will.safe).execTransactionFromModule(
+                        if (
+                            !GnosisSafe(will.safe).execTransactionFromModule(
                                 will.nfts[i].contractAddress,
                                 0,
                                 abi.encodeWithSignature(
@@ -271,7 +274,8 @@ contract MementoMori is Ownable {
                             amount = 1;
                         }
 
-                        if(!GnosisSafe(will.safe).execTransactionFromModule(
+                        if (
+                            !GnosisSafe(will.safe).execTransactionFromModule(
                                 will.erc1155s[i].contractAddress,
                                 0,
                                 abi.encodeWithSignature(
@@ -285,7 +289,6 @@ contract MementoMori is Ownable {
                                 ),
                                 Enum.Operation.Call
                             )
-
                         ) {
                             revert TransferFailed();
                         }
@@ -299,13 +302,13 @@ contract MementoMori is Ownable {
                 nativBalance,
                 will.native[0].percentages[i]
             );
-            if(!GnosisSafe(will.safe).execTransactionFromModule(
+            if (
+                !GnosisSafe(will.safe).execTransactionFromModule(
                     will.native[0].beneficiaries[i],
                     nativeAmount,
                     "",
                     Enum.Operation.Call
                 )
-            
             ) {
                 revert TransferFailed();
             }
@@ -376,10 +379,10 @@ contract MementoMori is Ownable {
     }
 
     /**
- * @notice Calculates the amount of tokens a beneficiary will receive given a percentage
- * @param balance owner token balance
- * @param percentage percentage of total tokens beneficiary will recieve
- */
+     * @notice Calculates the amount of tokens a beneficiary will receive given a percentage
+     * @param balance owner token balance
+     * @param percentage percentage of total tokens beneficiary will recieve
+     */
     function calculateAmount(
         uint256 balance,
         uint256 percentage
