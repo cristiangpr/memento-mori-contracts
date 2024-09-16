@@ -147,7 +147,7 @@ describe('MementoMori', function () {
 
         await expect(
           mementoMori.saveWillHash([will], 0, { value: 0 })
-        ).to.be.revertedWith('value must be greater than fee')
+        ).to.be.revertedWithCustomError(mementoMori, 'ValueLessThanFee')
       })
     })
     describe('Operations', function () {
